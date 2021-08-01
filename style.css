@@ -1,0 +1,89 @@
+* {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  font-family: sans-serif;
+  text-align: center;
+  line-height: 1.7;
+}
+
+ul {
+  list-style: none;
+}
+
+li {
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+li:hover {
+  transform: scale(1.4);
+  text-decoration: underline;
+}
+
+header {
+  position: relative;
+  background-image: url("bg.jpg");
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  color: white;
+  text-transform: uppercases;
+}
+
+.logo {
+  position: absolute;
+  top: 40px;
+  left: 50px;
+  width: 100px;
+  animation-name: fromlest;
+  animation-duration: 2s;
+}
+
+.aeie {
+  position: absolute;
+  top: 40px;
+  right: 50px;
+  width: 100px;
+  animation-name: fromrit;
+  animation-duration: 2s;
+}
+
+nav {
+  animation-name: opacity;
+  animation-duration: 4s;
+}
+
+@keyframes fromlest {
+  0% {
+    transform: translateX(-200px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 100;
+  }
+}
+
+@keyframes fromrit {
+  0% {
+    transform: translateX(200px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 100;
+  }
+}
+
+@keyframes opacity {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 100;
+  }
+}

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="prism.css" />
+    <script src="prism.js"></script>
+    <title>Smart Power Grid Monitor</title>
+  </head>
+  <body>
+    <header>
+      <img src="logo.png" class="logo" />
+      <img src="aeie logo.png" class="aeie" />
+      <h1>Smart Power Grid Monitor</h1>
+      <h3>Code</h3>
+      <nav>
+        <h3>Group Number 1</h3>
+        <ul>
+          <li>Debaditya Das</li>
+          <li>Abhijit Saha</li>
+          <li>Sahely Bhattacharyya</li>
+          <li>Shayan Ghosh</li>
+          <li>Shankha Bhattacharya</li>
+          <li>Sk Arka</li>
+        </ul>
+      </nav>
+    </header>
+
+    <pre class="language-cpp"><code>
+      #if defined(ESP32)
+      #include &lt;WiFi.h&gt;
+      #include &lt;FirebaseESP32.h&gt;
+      #elif defined(ESP8266)
+      #include &lt;ESP8266WiFi.h&gt;
+      #include &lt;FirebaseESP8266.h&gt;
+      #endif
+      
+      #include "addons/TokenHelper.h"
+      #include "addons/RTDBHelper.h"
+      
+      #include &lt;NTPClient.h&gt;
+      #include &lt;WiFiUdp.h&gt;
+      #include &lt;Adafruit_ADS1X15.h&gt;
+      
+      #define API_KEY "**************"  
+      #define DATABASE_URL "*************"  
+      
+      
+      const char ssid     = "***"; 
+      const char password = "***"; 
+      
+      
+      FirebaseData fbdo;    
+      FirebaseAuth auth;     
+      FirebaseConfig config; 
+      
+      Adafruit_ADS1115 ads;
+      WiFiUDP ntpUDP;
+      NTPClient timeClient(ntpUDP, "in.pool.ntp.org"); 
+      
+      //time
+      unsigned long epochTime;
+      int monthDay, currentMonth, currentYear, currentHour, currentMinute, currentSecond,pc;  
+      
+      // voltage
+      int16_t sensorValue1 = 0;
+      int val[100]; int max_v = 0;
+      double VmaxD = 0, Veff = 0;
+      
+      
+      // energy
+      const byte interruptPin = 14; // Or other pins that support an interrupt
+      volatile boolean  interrupt_occurred = false; 
+      const int LED_pin = 2;
+      const int RELAY_pin = 2;
+      int cnt = 0;
+      
+      //Current
+      int16_t  sensorVALue2 = 0; int VAL[100]; int max_i = 0;
+      double ImaxD = 0; float current = 0; double Ieff = 0;
+      
+      
+      void setup()
+      {
+      
+        Serial.begin(115200); 
+      
+        pinMode(LED_pin, OUTPUT); digitalWrite(LED_pin, 1); 
+        pinMode(interruptPin, INPUT_PULLUP);
+        attachInterrupt(digitalPinToInterrupt(interruptPin), ISR, FALLING);
+      
+        WiFi.begin(ssid, password);
+        Serial.print("Connecting to Wi-Fi");
+        while (WiFi.status() != WL_CONNECTED)
+        {Serial.print(".");delay(300);}
+      
+        Serial.println();
+        Serial.print("Connected with IP: ");Serial.println(WiFi.localIP());Serial.println();
+        digitalWrite(LED_pin, 0);
+      
+        Serial.printf("Firebase Client v%s\n\n", FIREBASE_CLIENT_VERSION); 
+      
+      
+        config.api_key = API_KEY;      
+        config.database_url = DATABASE_URL;
+      
+        timeClient.begin();
+        timeClient.setTimeOffset(19800); 
+      
+      //  ads.setGain(GAIN_ONE); 
+      //  if (!ads.begin()) 
+      //  {Serial.println("Failed to initialize ADS."); while (1);}
+        
+        Firebase.begin(DATABASE_URL, API_KEY); 
+        
+      }
+      
+      void loop()
+      {
+        timeClient.update();
+        unsigned long epochTime = timeClient.getEpochTime(); 
+        struct tm *ptm = gmtime ((time_t *)&epochTime);
+      
+        int monthDay = ptm->tm_mday;                  
+        int currentMonth = ptm->tm_mon+1;             
+        int currentYear = ptm->tm_year+1900;         
+      
+        int currentHour = timeClient.getHours();      
+        int currentMinute = timeClient.getMinutes();  
+        int currentSecond = timeClient.getSeconds();  
+      
+        voltage(); 
+        CURRENt();
+        Serial.println("Voltage: " + String(Veff)+ " volt");
+        Serial.println("EnergyImpulse: " + String(cnt));
+        Serial.println("Current: " + String(current)+ " amp");
+        Serial.println(String(monthDay) + "-" + String(currentMonth) + "-" + String(currentYear));
+        Serial.println(String(currentHour) + "-" + String(currentMinute) + "-" + String(currentSecond));
+        Serial.println(".........");
+        
+      /in each 1 min interval we updating the value in fire base/
+      
+       if(currentMinute-pc == 1 || pc == 0)
+        {
+        
+        Firebase.setInt(fbdo, "/SEM/EIMP", cnt);          
+        Firebase.setInt(fbdo, "/SEM/VOLTAGE", Veff);     
+        Firebase.setFloat(fbdo, "/SEM/CURRENT", current); 
+      
+        Firebase.setInt(fbdo, "/SEM/DD", monthDay);     
+        Firebase.setInt(fbdo, "/SEM/MO", currentMonth);  
+        Firebase.setInt(fbdo, "/SEM/YY", currentYear);   
+      
+        Firebase.setInt(fbdo, "/SEM/HH", currentHour);  
+        Firebase.setInt(fbdo, "/SEM/MI", currentMinute); 
+      
+        pc=currentMinute;
+      
+        }
+        
+         delay(500);
+      }
+      
+      ICACHE_RAM_ATTR void ISR ()
+      {                
+        cnt++;
+        //Serial.println(cnt);
+      }
+      
+      
+      void voltage()
+      {
+        for ( int i = 0; i < 100; i++ ) 
+        {
+          sensorValue1 = ads.readADC_SingleEnded(0); 
+          if (sensorValue1 > 13200) 
+          { val[i] = sensorValue1; }
+          
+          else { val[i] = 0; }
+          delay(1);
+        }
+      
+        max_v = 0;
+      
+        for ( int i = 0; i < 100; i++ )
+        {
+          if ( val[i] > max_v )
+          { max_v = val[i]; }
+          val[i] = 0;
+          }
+          
+        if (max_v != 0) 
+        {
+          VmaxD = max_v;
+          Veff=map(VmaxD,17660,17740,230,235);
+          if(Veff>=230 && Veff<=235)
+          {Veff = Veff;}
+          else {Veff = 0;}
+        }
+        else {Veff = 0; }
+        VmaxD = 0;
+      }
+      
+      void CURRENt()
+      {
+          for ( int i = 0; i < 100; i++ ) {
+          sensorVALue2 = ads.readADC_SingleEnded(1); 
+          if (sensorVALue2 > 0) {
+            VAL[i] = sensorVALue2;
+          }
+          else {
+            VAL[i] = 0;
+          }
+          delay(1);
+        }
+      
+        max_i = 0;
+      
+        for ( int i = 0; i < 100; i++ )
+        {
+          if ( VAL[i] > max_i )
+          {max_i = VAL[i];}
+          VAL[i] = 0;
+        }
+        if (max_i != 0) 
+        {
+          ImaxD = max_i;
+          Ieff = ImaxD * 0.125;
+          current = ((pow(10,(-3))*6.870027753458*sq(Ieff))-(5.38066*Ieff)+1482.40)/1000;
+        }
+        else {current = 0;}
+        ImaxD = 0;
+        if (max_i>25){
+          digitalWrite(5,LOW);
+        }
+        delay(10);
+      }
+        
+
+    </code></pre>
+  </body>
+</html>
